@@ -3,7 +3,7 @@ from typing import Optional
 import numpy as np
 
 from cesnet_models._models_meta import _CESNET_QUIC22_102_CLASSES, _CESNET_TLS22_191_CLASSES
-from cesnet_models.architectures.multimodal_cesnet import Multimodal_CESNET, NormalizationEnum
+from cesnet_models.architectures.multimodal_cesnet import Multimodal_CESNET, NormalizationEnum, Multimodal_CESNET_Evidential
 from cesnet_models.helpers import Weights, WeightsEnum
 from cesnet_models.transforms import ClipAndScaleFlowstats, ClipAndScalePPI, NormalizeHistograms
 
@@ -134,6 +134,37 @@ def mm_cesnet_v2(weights: Optional[MM_CESNET_V2_Weights] = None,
                               num_classes=num_classes,
                               flowstats_input_size=flowstats_input_size,
                               ppi_input_channels=ppi_input_channels)
+
+def mm_cesnet_v2_evidential(num_classes: int,
+                            flowstats_input_size: int,
+                            ppi_input_channels: int,
+                            prototype_num: int = 800,
+                            distance_norm: float = 2.0,
+                            ) -> Multimodal_CESNET_Evidential:
+    v2_model_configuration = {
+        "conv_normalization": NormalizationEnum.BATCH_NORM,
+        "linear_normalization": NormalizationEnum.BATCH_NORM,
+        "cnn_ppi_num_blocks": 3,
+        "cnn_ppi_channels1": 200,
+        "cnn_ppi_channels2": 300,
+        "cnn_ppi_channels3": 300,
+        "cnn_ppi_use_pooling": True,
+        "cnn_ppi_dropout_rate": 0.1,
+        "mlp_flowstats_num_hidden": 2,
+        "mlp_flowstats_size1": 225,
+        "mlp_flowstats_size2": 225,
+        "mlp_flowstats_dropout_rate": 0.1,
+        "mlp_shared_num_hidden":  0,
+        "mlp_shared_size": 600,
+        "mlp_shared_dropout_rate": 0.2,
+    }
+    return Multimodal_CESNET_Evidential(
+        num_classes=num_classes,
+        flowstats_input_size=flowstats_input_size,
+        ppi_input_channels=ppi_input_channels,
+        prototype_num=prototype_num,
+        distance_norm=distance_norm,
+        **v2_model_configuration)
 
 class MM_CESNET_V1_Weights(WeightsEnum):
     CESNET_TLS22_WEEK40 = Weights(
