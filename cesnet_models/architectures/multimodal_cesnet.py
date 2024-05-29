@@ -302,7 +302,7 @@ class Multimodal_CESNET_Evidential(nn.Module):
             ds.SupportLayer(prototype_num),
             ds.MassFunctionLayer(prototype_num, self.num_classes),
             ds.DempsterAggregationLayer(prototype_num, self.num_classes),
-            ds.DMPignistic(self.num_classes)
+            ds.DM(0.9, self.num_classes)
         )
 
 
