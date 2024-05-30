@@ -298,11 +298,17 @@ class Multimodal_CESNET_Evidential(nn.Module):
                 nn.Dropout(mlp_shared_dropout_rate)) for _ in range(mlp_shared_num_hidden)),
         )
         self.classifier = nn.Sequential(
-            ds.DistanceLayer(self.mlp_shared_size, prototype_num, distance_norm),
-            ds.SupportLayer(prototype_num),
-            ds.MassFunctionLayer(prototype_num, self.num_classes),
-            ds.DempsterAggregationLayer(prototype_num, self.num_classes),
-            ds.DM(0.9, self.num_classes)
+            #ds.DistanceLayer(self.mlp_shared_size, prototype_num, distance_norm),
+            #ds.SupportLayer(prototype_num),
+            #ds.MassFunctionLayer(prototype_num, self.num_classes),
+            #ds.DempsterAggregationLayer(prototype_num, self.num_classes),
+            #ds.DM(0.9, self.num_classes)
+            ds.Distance_layer(n_prototypes=prototype_num, n_feature_maps=self.mlp_shared_size),
+            ds.DistanceActivation_layer(n_prototypes=prototype_num),
+            ds.Belief_layer(n_prototypes=prototype_num, num_class=self.num_classes),
+            ds.Omega_layer(n_prototypes=prototype_num,num_class=self.num_classes),
+            ds.Dempster_layer(n_prototypes=prototype_num,num_class=self.num_classes),
+            ds.DempsterNormalize_layer()
         )
 
 

@@ -1,108 +1,103 @@
-"""
-Module doc string.
-"""
-import math
 import torch
-import torch.nn as nn
-import torch.nn.init as init
-import torch.nn.functional as F
+import numpy as np
+
+class Distance_layer(torch.nn.Module):
+    '''
+    verified
+    '''
+    def __init__(self, n_prototypes, n_feature_maps):
+        super(Distance_layer, self).__init__()
+        self.w = torch.nn.Linear(in_features=n_feature_maps, out_features=n_prototypes, bias=False).weight
+        self.n_prototypes = n_prototypes
+
+    def forward(self, inputs):
+        for i in range(self.n_prototypes):
+            if i == 0:
+                un_mass_i = (self.w[i, :] - inputs) ** 2
+                un_mass_i = torch.sum(un_mass_i, dim=-1, keepdim=True)
+                un_mass = un_mass_i
+
+            if i >= 1:
+                un_mass_i = (self.w[i, :] - inputs) ** 2
+                un_mass_i = torch.sum(un_mass_i, dim=-1, keepdim=True)
+                un_mass = torch.cat([un_mass, un_mass_i], -1)
+        return un_mass
 
 
-class DistanceLayer(nn.Module):
-    """
-    Takes representation of the features and calculates the distance 
-    between the representation and the learned prototypes.
-    """
-    def __init__(self, in_features: int, n_prototypes: int, p_norm_distance: float = 2.0):
-        super(DistanceLayer, self).__init__()
-        self.prototype = nn.Parameter(torch.empty(n_prototypes, in_features), requires_grad=True)
-        init.kaiming_uniform_(self.prototype, a=math.sqrt(5))
-        self.p_norm_distance = p_norm_distance
+class DistanceActivation_layer(torch.nn.Module):
+    '''
+    verified
+    '''
+    def __init__(self, n_prototypes,init_alpha=0,init_gamma=0.1):
+        super(DistanceActivation_layer, self).__init__()
+        self.eta = torch.nn.Linear(in_features=n_prototypes, out_features=1, bias=False)#.weight.data.fill_(torch.from_numpy(np.array(init_gamma)).to(device))
+        self.xi = torch.nn.Linear(in_features=n_prototypes, out_features=1, bias=False)#.weight.data.fill_(torch.from_numpy(np.array(init_alpha)).to(device))
+        #torch.nn.init.kaiming_uniform_(self.eta.weight)
+        #torch.nn.init.kaiming_uniform_(self.xi.weight)
+        torch.nn.init.constant_(self.eta.weight,init_gamma)
+        torch.nn.init.constant_(self.xi.weight,init_alpha)
+        #self.alpha_test = 1/(torch.exp(-self.xi.weight)+1)
+        self.n_prototypes = n_prototypes
+        self.alpha = None
 
-    def forward(self, x: torch.Tensor):
-        """
-        Forward function to compute distances between input and prototypes.
-        
-        Args:
-            x (torch.Tensor): Input tensor of shape (batch_size, in_features).
+    def forward(self, inputs):
+        gamma=torch.square(self.eta.weight)
+        alpha=torch.neg(self.xi.weight)
+        alpha=torch.exp(alpha)+1
+        alpha=torch.div(1, alpha)
+        self.alpha=alpha
+        si=torch.mul(gamma, inputs)
+        si=torch.neg(si)
+        si=torch.exp(si)
+        si = torch.mul(si, alpha)
+        max_val, max_idx = torch.max(si, dim=-1, keepdim=True)
+        si /= (max_val + 0.0001)
 
-        Returns:
-            torch.Tensor: Distances between input features and prototypes,
-                          shape (batch_size, n_prototypes).
-        """
-        # Expand dimensions for broadcasting
-        x_extended = x.unsqueeze(1)  # Shape: (batch_size, 1, in_features)
-        prototypes_expanded = self.prototype.unsqueeze(0)  # Shape: (1, n_prototypes, in_features)
+        return si
 
-        distances = torch.cdist(x_extended, prototypes_expanded, p=self.p_norm_distance)
-        return distances
-
-
-class SupportLayer(nn.Module):
-    """
-    Calculates the distance-based support values given the distances.
-    """
-    def __init__(self, n_prototypes: int):
-        super(SupportLayer, self).__init__()
-        # Initialize alpha in (0, 1)
-        self.alpha = nn.Parameter(torch.rand(n_prototypes), requires_grad=True)
-        # Initialize eta with normal distribution
-        self.eta = nn.Parameter(torch.randn(n_prototypes), requires_grad=True)
-
-    def forward(self, distances: torch.Tensor):
-        """
-        Forward function to compute support values.
-        
-        Args:
-            distances (torch.Tensor): Distance tensor of shape (batch_size, n_prototypes).
-
-        Returns:
-            torch.Tensor: Support values s^i for each input and prototype
-            shape (batch_size, n_prototypes).
-        """
-        alpha = torch.sigmoid(self.alpha)
-        eta_distances_squared = (self.eta * distances) ** 2
-        support_values = alpha * torch.exp(-eta_distances_squared)
-
-        return support_values
-
-
-class MassFunctionLayer(nn.Module):
-    """
-    Custom module that performs element-wise multiplication of the input tensor
-    """
-    def __init__(self, n_prototypes: int, n_classes: int):
-        super(MassFunctionLayer, self).__init__()
-        self.h = nn.Parameter(torch.rand(n_prototypes, n_classes), requires_grad=True)
-        self.h.data = F.normalize(self.h.data, p=1, dim=1)
-
-    def forward(self, s: torch.Tensor):
-        """
-        Transform the batch of support values to mass functions.
-        """
-        self.h.data = F.normalize(self.h.data, p=1, dim=1)
-        s = s.view(s.size(0), -1, 1)
-        sh = s * self.h.unsqueeze(0)
-        one_minus_s = 1 - s
-        m_i = torch.cat((sh, one_minus_s), dim=2)
-
-        return m_i
-
-
-
-class DempsterAggregationLayer(nn.Module):
-    """
-    Aggregates mass functions using Dempster's rule with a vectorized approach.
-    """
+class Belief_layer(torch.nn.Module):
+    '''
+    verified
+    '''
     def __init__(self, n_prototypes, num_class):
-        super(DempsterAggregationLayer, self).__init__()
+        super(Belief_layer, self).__init__()
+        self.beta = torch.nn.Linear(in_features=n_prototypes, out_features=num_class, bias=False).weight
+        self.num_class = num_class
+    def forward(self, inputs):
+        beta = torch.square(self.beta)
+        beta_sum = torch.sum(beta, dim=0, keepdim=True)
+        u = torch.div(beta, beta_sum)
+        mass_prototype = torch.einsum('cp,b...p->b...pc',u, inputs)
+        return mass_prototype
+
+class Omega_layer(torch.nn.Module):
+    '''
+    verified, give same results
+
+    '''
+    def __init__(self, n_prototypes, num_class):
+        super(Omega_layer, self).__init__()
         self.n_prototypes = n_prototypes
         self.num_class = num_class
 
     def forward(self, inputs):
-        """
-        Dempster's rule of combination.
-        """
+        mass_omega_sum = 1 - torch.sum(inputs, -1, keepdim=True)
+        #mass_omega_sum = 1. - mass_omega_sum[..., 0]
+        #mass_omega_sum = torch.unsqueeze(mass_omega_sum, -1)
+        mass_with_omega = torch.cat([inputs, mass_omega_sum], -1)
+        return mass_with_omega
+
+class Dempster_layer(torch.nn.Module):
+    '''
+    verified give same results
+
+    '''
+    def __init__(self, n_prototypes, num_class):
+        super(Dempster_layer, self).__init__()
+        self.n_prototypes = n_prototypes
+        self.num_class = num_class
+
+    def forward(self, inputs):
         m1 = inputs[..., 0, :]
         omega1 = torch.unsqueeze(inputs[..., 0, -1], -1)
         for i in range(self.n_prototypes - 1):
@@ -119,68 +114,37 @@ class DempsterAggregationLayer(nn.Module):
         return m1
 
 
-class NormalizeMassFunction(nn.Module):
-    """
-    Custom module to normalize mass functions.
-    """
+class DempsterNormalize_layer(torch.nn.Module):
+    '''
+    verified
+
+    '''
     def __init__(self):
-        super(NormalizeMassFunction, self).__init__()
-
-    def forward(self, mass_functions: torch.Tensor):
-        """
-        Forward function to normalize mass functions.
-        :param mass_functions: Tensor of shape (batch_size, n_classes+1)
-                               where the last column represents the uncertainty.
-        :return: Normalized mass functions.
-        """
-        return mass_functions / torch.sum(mass_functions, dim=1, keepdim=True)
+        super(DempsterNormalize_layer, self).__init__()
+    def forward(self, inputs):
+        mass_combine_normalize = inputs / torch.sum(inputs, dim=-1, keepdim=True)
+        return mass_combine_normalize
 
 
-class DMPignistic(nn.Module):
-    """
-    Get pignistic probability from mass function.
-    """
-    def __init__(self, num_classes: int):
-        super(DMPignistic, self).__init__()
-        self.num_classes = num_classes
-
-    def forward(self, inputs: torch.Tensor):
-        """
-        Forward function to compute pignistic probabilities.
-        :param mass_functions: Tensor of shape (batch_size, n_classes+1)
-                               where the last column represents the uncertainty.
-        :return: Pignistic probabilities.
-        """
-        average_pignistic = inputs[..., -1] / self.num_classes
-        average_pignistic = average_pignistic.unsqueeze(-1)
-
-        # Extract the mass functions for each class
-        mass_class = inputs[..., :-1]
-
-        # Add the average pignistic value to each class mass
-        pignistic_prob = mass_class + average_pignistic
-
-        return pignistic_prob
+def tile(a, dim, n_tile, device):
+    init_dim = a.size(dim)
+    repeat_idx = [1] * a.dim()
+    repeat_idx[dim] = n_tile
+    a = a.repeat(*(repeat_idx))
+    order_index = torch.LongTensor(np.concatenate([init_dim * np.arange(n_tile) + i for i in range(init_dim)])).to(
+        device)
+    return torch.index_select(a, dim, order_index)
 
 
-class DM(nn.Module):
-    """
-    Decision maker.
-    """
-    def __init__(self, nu, num_class):
+class DM(torch.nn.Module):
+    def __init__(self, num_class, nu=0.9, device=torch.device('cpu')):
         super(DM, self).__init__()
         self.nu = nu
         self.num_class = num_class
+        self.device = device
 
-    def forward(self, inputs: torch.Tensor):
-        """
-        Decision making with pessimistic decision maker.
-        """
-        # Calculate the upper term
-        upper = (1 - self.nu) * inputs[:, -1].unsqueeze(-1)
-        upper = upper.expand(-1, self.num_class + 1)
-
-        outputs = inputs + upper
-        outputs = outputs[:, 0:-1]
-
+    def forward(self, inputs):
+        upper = torch.unsqueeze((1 - self.nu) * inputs[..., -1], -1)  # here 0.1 = 1 - \nu
+        upper = tile(upper, dim=-1, n_tile=self.num_class + 1, device=self.device)
+        outputs = (inputs + upper)[..., :-1]
         return outputs
