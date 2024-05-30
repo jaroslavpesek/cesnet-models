@@ -308,7 +308,8 @@ class Multimodal_CESNET_Evidential(nn.Module):
             ds.Belief_layer(n_prototypes=prototype_num, num_class=self.num_classes),
             ds.Omega_layer(n_prototypes=prototype_num,num_class=self.num_classes),
             ds.Dempster_layer(n_prototypes=prototype_num,num_class=self.num_classes),
-            ds.DempsterNormalize_layer()
+            ds.DempsterNormalize_layer(),
+            ds.DM(self.num_classes, 0.9)
         )
 
 
