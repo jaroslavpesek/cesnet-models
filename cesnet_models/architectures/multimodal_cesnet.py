@@ -285,18 +285,6 @@ class Multimodal_CESNET_Evidential(nn.Module):
             linear_norm(mlp_flowstats_size2),
             nn.Dropout(mlp_flowstats_dropout_rate),
         )
-        self.mlp_shared = nn.Sequential(
-            nn.Linear(mlp_shared_input_size, mlp_shared_size),
-            nn.ReLU(inplace=False),
-            linear_norm(mlp_shared_size),
-            nn.Dropout(mlp_shared_dropout_rate),
-
-            *(nn.Sequential(
-                nn.Linear(mlp_shared_size, mlp_shared_size),
-                nn.ReLU(inplace=False),
-                linear_norm(mlp_shared_size),
-                nn.Dropout(mlp_shared_dropout_rate)) for _ in range(mlp_shared_num_hidden)),
-        )
         self.classifier = nn.Sequential(
             #ds.DistanceLayer(self.mlp_shared_size, prototype_num, distance_norm),
             #ds.SupportLayer(prototype_num),
@@ -326,7 +314,6 @@ class Multimodal_CESNET_Evidential(nn.Module):
                 flowstats_input = flowstats
             out_flowstats = self.mlp_flowstats(flowstats_input)
             out = torch.column_stack([out, out_flowstats])
-        out = self.mlp_shared(out)
         return out
 
     def forward_head(self, x):
