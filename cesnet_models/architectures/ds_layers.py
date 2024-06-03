@@ -126,23 +126,25 @@ class DempsterNormalize_layer(torch.nn.Module):
         return mass_combine_normalize
 
 
-def tile(a, dim, n_tile):
+def tile(a, dim, n_tile, device=torch.device('cuda:0')):
     init_dim = a.size(dim)
     repeat_idx = [1] * a.dim()
     repeat_idx[dim] = n_tile
     a = a.repeat(*(repeat_idx))
-    order_index = torch.LongTensor(np.concatenate([init_dim * np.arange(n_tile) + i for i in range(init_dim)]))
+    order_index = torch.LongTensor(np.concatenate([init_dim * np.arange(n_tile) + i for i in range(init_dim)])).to(
+        device)
     return torch.index_select(a, dim, order_index)
 
 
 class DM(torch.nn.Module):
-    def __init__(self, num_class, nu=0.9):
+    def __init__(self, num_class, nu=0.9, device=torch.device('cuda:0')):
         super(DM, self).__init__()
         self.nu = nu
         self.num_class = num_class
+        self.device = device
 
     def forward(self, inputs):
         upper = torch.unsqueeze((1 - self.nu) * inputs[..., -1], -1)  # here 0.1 = 1 - \nu
-        upper = tile(upper, dim=-1, n_tile=self.num_class + 1)
+        upper = tile(upper, dim=-1, n_tile=self.num_class + 1, device=self.device)
         outputs = (inputs + upper)[..., :-1]
         return outputs
