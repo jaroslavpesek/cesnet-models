@@ -5,20 +5,21 @@ class Distance_layer(torch.nn.Module):
     '''
     verified
     '''
-    def __init__(self, n_prototypes, n_feature_maps):
+    def __init__(self, n_prototypes, n_feature_maps, p_norm=2.0):
         super(Distance_layer, self).__init__()
+        self.p_norm = p_norm
         self.w = torch.nn.Linear(in_features=n_feature_maps, out_features=n_prototypes, bias=False).weight
         self.n_prototypes = n_prototypes
 
     def forward(self, inputs):
         for i in range(self.n_prototypes):
             if i == 0:
-                un_mass_i = (self.w[i, :] - inputs) ** 2
+                un_mass_i = (self.w[i, :] - inputs) ** self.p_norm
                 un_mass_i = torch.sum(un_mass_i, dim=-1, keepdim=True)
                 un_mass = un_mass_i
 
             if i >= 1:
-                un_mass_i = (self.w[i, :] - inputs) ** 2
+                un_mass_i = (self.w[i, :] - inputs) ** self.p_norm
                 un_mass_i = torch.sum(un_mass_i, dim=-1, keepdim=True)
                 un_mass = torch.cat([un_mass, un_mass_i], -1)
         return un_mass

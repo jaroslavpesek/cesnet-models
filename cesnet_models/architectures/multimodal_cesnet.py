@@ -195,8 +195,9 @@ class Multimodal_CESNET_Evidential(nn.Module):
     def __init__(self, num_classes: int,
                        flowstats_input_size: int,
                        ppi_input_channels: int,
-                       prototype_num: int = 800,
+                       num_prototype: int = 100,
                        distance_norm: float = 2.0,
+                       nu: float = 0.9,
                        use_flowstats: bool = True, add_ppi_to_mlp_flowstats: bool = False,
                        conv_normalization: NormalizationEnum = NormalizationEnum.BATCH_NORM, linear_normalization: NormalizationEnum = NormalizationEnum.BATCH_NORM,
                        cnn_ppi_channels1: int = 200, cnn_ppi_channels2: int = 300, cnn_ppi_channels3: int = 300, cnn_ppi_num_blocks: int = 3, cnn_ppi_depthwise: bool = False,
@@ -285,15 +286,15 @@ class Multimodal_CESNET_Evidential(nn.Module):
             linear_norm(mlp_flowstats_size2),
             nn.Dropout(mlp_flowstats_dropout_rate),
         )
-        self.classifier = nn.Sequential(
-            ds.Distance_layer(n_prototypes=prototype_num, n_feature_maps=mlp_shared_input_size),
-            ds.DistanceActivation_layer(n_prototypes=prototype_num),
-            ds.Belief_layer(n_prototypes=prototype_num, num_class=self.num_classes),
-            ds.Omega_layer(n_prototypes=prototype_num,num_class=self.num_classes),
-            ds.Dempster_layer(n_prototypes=prototype_num,num_class=self.num_classes),
+        self.evidential_layer = nn.Sequential(
+            ds.Distance_layer(n_prototypes=num_prototype, n_feature_maps=mlp_shared_input_size),
+            ds.DistanceActivation_layer(n_prototypes=num_prototype),
+            ds.Belief_layer(n_prototypes=num_prototype, num_class=self.num_classes),
+            ds.Omega_layer(n_prototypes=num_prototype,num_class=self.num_classes),
+            ds.Dempster_layer(n_prototypes=num_prototype,num_class=self.num_classes),
             ds.DempsterNormalize_layer(),
-            ds.DM(self.num_classes, 0.9)
         )
+        self.classifier = ds.DM(self.num_classes, nu)
 
 
     def forward_features(self, ppi, flowstats):
@@ -309,6 +310,7 @@ class Multimodal_CESNET_Evidential(nn.Module):
                 flowstats_input = flowstats
             out_flowstats = self.mlp_flowstats(flowstats_input)
             out = torch.column_stack([out, out_flowstats])
+        out = self.evidential_layer(out)
         return out
 
     def forward_head(self, x):
