@@ -138,7 +138,8 @@ def mm_cesnet_v2(weights: Optional[MM_CESNET_V2_Weights] = None,
 def mm_cesnet_v2_evidential(num_classes: int,
                             flowstats_input_size: int,
                             ppi_input_channels: int,
-                            prototype_num: int = 800,
+                            prototype_num: int = 100,
+                            nu=0.9,
                             distance_norm: float = 2.0,
                             ) -> Multimodal_CESNET_Evidential:
     v2_model_configuration = {
@@ -162,7 +163,8 @@ def mm_cesnet_v2_evidential(num_classes: int,
         num_classes=num_classes,
         flowstats_input_size=flowstats_input_size,
         ppi_input_channels=ppi_input_channels,
-        prototype_num=prototype_num,
+        num_prototype=prototype_num,
+        nu=nu,
         distance_norm=distance_norm,
         **v2_model_configuration)
 
