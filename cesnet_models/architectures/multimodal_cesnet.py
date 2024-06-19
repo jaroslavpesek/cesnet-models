@@ -287,7 +287,10 @@ class Multimodal_CESNET_Evidential(nn.Module):
             nn.Dropout(mlp_flowstats_dropout_rate),
         )
         self.evidential_layer = nn.Sequential(
-            ds.Distance_layer(n_prototypes=num_prototype, n_feature_maps=mlp_shared_input_size),
+            nn.Linear(mlp_shared_input_size, mlp_shared_size),
+            nn.ReLU(inplace=False),
+            linear_norm(mlp_shared_size),
+            ds.Distance_layer(n_prototypes=num_prototype, n_feature_maps=mlp_shared_size),
             ds.DistanceActivation_layer(n_prototypes=num_prototype),
             ds.Belief_layer(n_prototypes=num_prototype, num_class=self.num_classes),
             ds.Omega_layer(n_prototypes=num_prototype,num_class=self.num_classes),
