@@ -15,6 +15,12 @@ class NormalizationEnum(Enum):
     NO_NORM = "no-norm"
     def __str__(self): return self.value
 
+class ECNN(Enum):
+    TRAIN_CNN = "train_cnn"
+    TRAIN_DST = "train_dst"
+    TEST = "test"
+    def __str__(self): return self.value
+
 def conv_norm_from_enum(size: int, norm_enum: NormalizationEnum, group_norm_groups: int = 16):
     if norm_enum == NormalizationEnum.BATCH_NORM:
         return nn.BatchNorm1d(size)
@@ -206,6 +212,7 @@ class Multimodal_CESNET_Evidential(nn.Module):
                        mlp_shared_size: int = 600, mlp_shared_num_hidden: int = 0, mlp_shared_dropout_rate: float = 0.2,
                        ):
         super().__init__()
+        self.mode = ECNN.TRAIN_CNN
         if add_ppi_to_mlp_flowstats and not use_flowstats:
             raise ValueError("add_ppi_to_mlp_flowstats requires use_flowstats")
         if cnn_ppi_depthwise and cnn_ppi_channels1 % ppi_input_channels != 0:
@@ -286,10 +293,20 @@ class Multimodal_CESNET_Evidential(nn.Module):
             linear_norm(mlp_flowstats_size2),
             nn.Dropout(mlp_flowstats_dropout_rate),
         )
-        self.evidential_layer = nn.Sequential(
+        self.mlp_shared = nn.Sequential(
             nn.Linear(mlp_shared_input_size, mlp_shared_size),
             nn.ReLU(inplace=False),
             linear_norm(mlp_shared_size),
+            nn.Dropout(mlp_shared_dropout_rate),
+
+            *(nn.Sequential(
+                nn.Linear(mlp_shared_size, mlp_shared_size),
+                nn.ReLU(inplace=False),
+                linear_norm(mlp_shared_size),
+                nn.Dropout(mlp_shared_dropout_rate)) for _ in range(mlp_shared_num_hidden)),
+        )
+        self.proba_classifier = nn.Linear(mlp_shared_size, num_classes)
+        self.evidential_layer = nn.Sequential(
             ds.Distance_layer(n_prototypes=num_prototype, n_feature_maps=mlp_shared_size),
             ds.DistanceActivation_layer(n_prototypes=num_prototype),
             ds.Belief_layer(n_prototypes=num_prototype, num_class=self.num_classes),
@@ -297,7 +314,7 @@ class Multimodal_CESNET_Evidential(nn.Module):
             ds.Dempster_layer(n_prototypes=num_prototype,num_class=self.num_classes),
             ds.DempsterNormalize_layer(),
         )
-        self.classifier = ds.DM(self.num_classes, nu)
+        self.evidential_train = ds.DM(self.num_classes, nu)
 
 
     def forward_features(self, ppi, flowstats):
@@ -316,13 +333,32 @@ class Multimodal_CESNET_Evidential(nn.Module):
         out = self.evidential_layer(out)
         return out
 
-    def forward_head(self, x):
-        return self.classifier(x)
+    def forward_head_proba(self, x):
+        return self.proba_classifier(x)
+    
+    def forward_head_evidential(self, x):
+        x = self.evidential_layer(x)
+        return self.evidential_train(x)
 
     def forward(self, *x: tuple) -> Tensor:
         if len(x) == 1:
             x = x[0]
         ppi, flowstats = x
         out = self.forward_features(ppi=ppi, flowstats=flowstats)
-        out = self.forward_head(out)
+        if self.mode == ECNN.TRAIN_CNN:
+            out = self.forward_head_proba(out)
+        elif self.mode == ECNN.TRAIN_DST:
+            out = self.forward_head_evidential(out)
         return out
+    
+    def set_mode(self, mode: ECNN):
+        self.mode = mode
+        # if mode is evidential, then freeze the feature extraction layers
+        if mode == ECNN.TRAIN_DST:
+            for param in self.cnn_ppi.parameters():
+                param.requires_grad = False
+            for param in self.mlp_flowstats.parameters():
+                param.requires_grad = False
+            for param in self.mlp_shared.parameters():
+                param.requires_grad = False
+
