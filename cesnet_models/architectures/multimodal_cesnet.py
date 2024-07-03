@@ -15,12 +15,6 @@ class NormalizationEnum(Enum):
     NO_NORM = "no-norm"
     def __str__(self): return self.value
 
-class ECNN(Enum):
-    TRAIN_CNN = "train_cnn"
-    TRAIN_DST = "train_dst"
-    TEST = "test"
-    def __str__(self): return self.value
-
 def conv_norm_from_enum(size: int, norm_enum: NormalizationEnum, group_norm_groups: int = 16):
     if norm_enum == NormalizationEnum.BATCH_NORM:
         return nn.BatchNorm1d(size)
@@ -212,7 +206,7 @@ class Multimodal_CESNET_Evidential(nn.Module):
                        mlp_shared_size: int = 600, mlp_shared_num_hidden: int = 0, mlp_shared_dropout_rate: float = 0.2,
                        ):
         super().__init__()
-        self.mode = ECNN.TRAIN_CNN
+        self.mode = 'train_features'
         if add_ppi_to_mlp_flowstats and not use_flowstats:
             raise ValueError("add_ppi_to_mlp_flowstats requires use_flowstats")
         if cnn_ppi_depthwise and cnn_ppi_channels1 % ppi_input_channels != 0:
@@ -345,16 +339,16 @@ class Multimodal_CESNET_Evidential(nn.Module):
             x = x[0]
         ppi, flowstats = x
         out = self.forward_features(ppi=ppi, flowstats=flowstats)
-        if self.mode == ECNN.TRAIN_CNN:
+        if self.mode == "train_features":
             out = self.forward_head_proba(out)
-        elif self.mode == ECNN.TRAIN_DST:
+        elif self.mode == "train_dst":
             out = self.forward_head_evidential(out)
         return out
     
-    def set_mode(self, mode: ECNN):
+    def set_mode(self, mode: str):
         self.mode = mode
         # if mode is evidential, then freeze the feature extraction layers
-        if mode == ECNN.TRAIN_DST:
+        if mode == "train_dst":
             for param in self.cnn_ppi.parameters():
                 param.requires_grad = False
             for param in self.mlp_flowstats.parameters():
